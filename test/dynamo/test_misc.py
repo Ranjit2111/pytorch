@@ -16644,7 +16644,7 @@ fn
         # move cache entry to front
         opt_fn(inp, 2)
         c2 = _debug_get_cache_entry_list(fn.__code__)
-        self.assertIs(c1[1], c2[0])
+        self.assertEqual(c2, [c1[1], c1[0], c1[2]])
 
     def test_inspect_signature_bind(self):
         import inspect
