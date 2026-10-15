@@ -1703,6 +1703,12 @@ class Reduction(Loops):
             strides = V.graph.sizevars.stride_hints(
                 j, reduction_vars, list(ranges1.keys())
             )
+            # A read that is constant along the innermost reduction var (e.g. a
+            # per-group mask broadcast within each group) hits the same address on
+            # consecutive reduction steps: it is neither contiguous nor strided
+            # along the reduction, so it abstains instead of voting OUTER.
+            if strides and strides[-1] == 0:
+                continue
             # A 0 stride does not make a reduction contiguous.
             # This can happen when the reduction ranges contains a 1.
             outer = all(s == 0 or s > 1 for s in strides)
