@@ -251,6 +251,7 @@ it.
 from __future__ import annotations
 
 import base64
+import contextlib  # noqa: TC003
 import dataclasses
 import errno
 import functools
@@ -405,18 +406,18 @@ class DynamoTracer:
     ``torch.compiler.precompile`` API, so it may change without a deprecation cycle.
 
     ``guard_filter_fn`` takes the ``GuardFilterEntry`` records (``guard_type``,
-    ``name``, ...) and returns one keep flag per entry, filtering the guards kept
-    in the SERIALIZED artifact (runtime capture guards are always retained; the
-    default drops only what cannot be serialized); ``recompile_limit`` caps
-    recompilations per frame, and a call past it runs eager and is absent from
-    the artifact without any gate refusing it; ``dynamic`` forces dynamic shapes
-    as ``torch.compile(dynamic=)`` does. The ``require_*`` gates refuse, at write
-    time, an artifact with a coverage gap (``require_complete``: a bypassed or
-    uncovered frame, a call that raised) or one whose dropped guards told
-    captured variants apart or hang off a configuration-chosen slot
-    (``require_no_risky_drops``). Other dropped guards,
-    such as the identity guards every model drops because they cannot be
-    serialized, are listed in the artifact rather than refused.
+    ``name``, ...) and returns one keep flag per entry. It filters the runtime
+    guards during capture as well as the serialized ones (the default drops only
+    what cannot be serialized), so a dropped guard never triggers a recompile during
+    capture; ``recompile_limit`` caps recompilations per frame, and a call past it
+    runs eager and is absent from the artifact without any gate refusing it;
+    ``dynamic`` forces dynamic shapes as ``torch.compile(dynamic=)`` does. The
+    ``require_*`` gates refuse, at write time, an artifact with a coverage gap
+    (``require_complete``: a bypassed or uncovered frame, a call that raised) or one
+    whose dropped guards told captured variants apart or hang off a
+    configuration-chosen slot (``require_no_risky_drops``). Other dropped guards,
+    such as the identity guards every model drops because they cannot be serialized,
+    are listed in the artifact rather than refused.
     """
 
     guard_filter_fn: Callable[[Sequence[Any]], Sequence[bool]] | None = None
@@ -699,7 +700,7 @@ class _DynamoCapture(Capture[_P, _R]):
 
     def __init__(
         self,
-        session: PrecompileSession,
+        session: PrecompileSession[_P, _R],
         artifact_path: str | os.PathLike[str],
         cache_path: str | os.PathLike[str],
         *,
@@ -2283,6 +2284,13 @@ def _build_multigraph_python_source(
     buf.writeline(
         f"RISKY_DROPPED_GUARDS = {[list(g) for g in summary.risky_dropped_guards]!r}"
     )
+    buf.writeline(
+        "# Kept by the filter but discarded by the invariance policy; likewise not"
+    )
+    buf.writeline("# checked at serve time.")
+    buf.writeline(
+        f"POLICY_DROPPED_GUARDS = {[list(g) for g in summary.policy_dropped_guards]!r}"
+    )
     buf.writeline("")
     buf.writeline("# What a dropped slot above actually checked, where it renders one.")
     buf.writeline(
@@ -3025,6 +3033,34 @@ def _read_artifact(
     return python_code, cache
 
 
+def no_compilation() -> contextlib.AbstractContextManager[None]:
+    """
+    Forbid graph/kernel compilation and autotuning on every thread of this process.
+
+    Use it around a serving worker's lifetime to prove that a loaded artifact
+    and its kernel/autotune cache cover every execution: anything that would
+    trace a graph, compile a kernel, benchmark or autotune raises
+    :class:`~torch.compiler.PrecompileError` instead of silently compiling::
+
+        runnable = torch.compiler.precompile.load(artifact_path, cache_path)
+        with torch.compiler.precompile.no_compilation():
+            serve(runnable)  # raises rather than compiling on a cache miss
+
+    Only kernels already in the in-process kernel cache may run.
+
+    Unlike ``precompile.serving()``, which is thread-local, the policy is
+    process-wide. Nested and overlapping uses are depth-counted, so it stays
+    active until the last owner exits; callers must drain work they dispatched
+    (e.g. to compile workers) before that exit. While active,
+    ``TORCH_PRECOMPILE_NO_COMPILATION=1`` is exported so child processes
+    inherit it, and setting exactly ``"1"`` before startup enables the policy
+    for the whole process.
+    """
+    from torch.compiler._no_compile import no_compilation as _no_compilation
+
+    return _no_compilation()
+
+
 def _runnable_from_pair(
     python_code: str, cache: bytes, *, _trusted: bool = False
 ) -> PrecompiledRunnable:
@@ -3323,7 +3359,11 @@ def load(
     disabled (``TORCHDYNAMO_DISABLE=1`` or the ``enable_dynamo`` killswitch),
     which it serves through. A Dynamo artifact whose
     capture graph-broke cannot load beside the live compile that captured it
-    (the continuation names collide): load it in a fresh process.
+    (the continuation names collide), and an installed artifact is refused
+    wherever any frame it installs onto already has live Dynamo cache entries:
+    load it in a fresh process. That check runs only at load: compiling those
+    frames after load adds live entries that serve the calls the installed
+    ones miss.
 
     Raises ``PrecompileError`` if either file cannot be read, if ``python_code`` is
     not a ``torch.compiler.precompile`` artifact, or if the cache's ``backend``,

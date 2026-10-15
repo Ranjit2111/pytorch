@@ -43,6 +43,7 @@ from torch.testing._internal.common_utils import (
     skipIfTorchDynamo,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import HAS_TRITON
 
 
 # A module-level (global) model + a function referencing it, to exercise the
@@ -2851,6 +2852,7 @@ class TestPrecompile(TestCase):
             "Capture",
             "DynamoTracer",
             "MakeFxTracer",
+            "no_compilation",
             "PrecompiledRunnable",
             "PrecompileSummary",
         }
@@ -3004,6 +3006,8 @@ class TestPrecompile(TestCase):
             guarded_codes=sum(len(c.guarded_codes) for c in entry.codes),
             backend_graphs=len(backends),
             dropped_guards=(("MODULE_MATCH", "model"),),
+            policy_dropped_guards=(("ID_MATCH", "act"),),
+            dropped_guard_code=(("ID_MATCH", "act", "___check_obj_id(act, 1)"),),
         )
         # The records name this module, which is __main__ under a script run and
         # the driver refuses that; serve them from an importable alias of it.
@@ -3026,6 +3030,10 @@ class TestPrecompile(TestCase):
             [c.python_code.co_name for c in entry.codes],
         )
         self.assertEqual(meta["DROPPED_GUARDS"], [["MODULE_MATCH", "model"]])
+        # Every slot DROPPED_GUARD_CODE names is listed above it, policy drops too.
+        self.assertEqual(meta["POLICY_DROPPED_GUARDS"], [["ID_MATCH", "act"]])
+        named = meta["DROPPED_GUARDS"] + meta["POLICY_DROPPED_GUARDS"]
+        self.assertTrue(all(g[:2] in named for g in meta["DROPPED_GUARD_CODE"]))
         blob = torch.load(io.BytesIO(cache), weights_only=True)
         self.assertEqual(blob["tracer"], "dynamo")
         self.assertIsNone(blob["artifact"])
@@ -4576,9 +4584,14 @@ class TestPrecompileCapture(TestCase):
 
 
 _GOLDEN_MODULE = """
+import types
+
 import torch
 
 SCALE = 2
+# Never registered in sys.modules, so no process can unpickle it by reference.
+unregistered = types.ModuleType("unregistered")
+unregistered.SCALE = 3
 
 
 class Model(torch.nn.Module):
@@ -4600,6 +4613,10 @@ def step(model, x, *, scale=1.0):
 
 def single(model, x):
     return model(x).sum(dim=0)
+
+
+def reads_unregistered(model, x):
+    return model(x).sum(dim=0) * unregistered.SCALE
 
 
 def train_step(model, x):
@@ -4792,8 +4809,43 @@ class TestPrecompileDynamoCapture(TestCase):
         cont = f"{self.module_name}.torch_dynamo_resume_in_breaking_helper_at_{line}"
         unreachable = f"\nUNREACHABLE_WITHOUT_INSTALL = {[helper, cont]!r}\n"
         self.assertIn(unreachable, python_code)
+        # The capture's live cache entries would serve any call the installed
+        # ones miss, so load refuses this process.
+        with self.assertRaisesRegex(PrecompileError, "fresh process"):
+            load(self.artifact, self.cache)
         calls = [((self.x2,), {}, y2), ((self.x3,), {}, y3)]
         self._serve_in_fresh_process(calls, mode="installed")
+
+    @skipIfCrossRef
+    @parametrize("compiled", ["calls_breaking_helper", "breaking_helper"])
+    def test_an_installed_artifact_refuses_frames_compiled_before_load(self, compiled):
+        # A fresh process that torch.compile'd the entry, or only a frame the
+        # entry calls, holds live entries that would serve uncovered calls.
+        fn = self.mod.calls_breaking_helper
+        with self._capture(fn, backend="eager") as cap:
+            cap(self.model, self.x2)
+        script = (
+            "import sys, torch\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "mod = __import__(sys.argv[4])\n"
+            "x = torch.randn(2, 4)\n"
+            "if sys.argv[5] == 'breaking_helper':\n"
+            "    torch.compile(mod.breaking_helper, backend='eager')(x)\n"
+            "else:\n"
+            "    torch.compile(mod.calls_breaking_helper, backend='eager')(mod.Model(), x)\n"
+            "try:\n"
+            "    torch.compiler.precompile.load(sys.argv[2], sys.argv[3])\n"
+            "except torch.compiler.PrecompileError as e:\n"
+            "    assert 'fresh process' in str(e), e\n"
+            "    print('refused', e)\n"
+        )
+        argv = [self.dir, self.artifact, self.cache, self.module_name, compiled]
+        cmd = [sys.executable, "-c", script, *argv]
+        out = subprocess.run(cmd, capture_output=True, text=True, timeout=900)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("refused", out.stdout)
+        # \b keeps "breaking_helper" from matching inside "calls_breaking_helper".
+        self.assertRegex(out.stdout, rf"onto \([^)]*\b{compiled}\b")
 
     @skipIfCrossRef
     def test_an_installed_artifact_leaves_the_global_stance_alone(self):
@@ -5167,14 +5219,17 @@ class TestPrecompileDynamoCapture(TestCase):
 
     def test_dropped_guards_are_reported_in_the_summary_and_the_artifact(self):
         # The default filter drops the identity guards that cannot be
-        # serialized (the MODULE_MATCH on the model here); the summary reports
-        # them and the artifact lists the same slots.
-        with self._capture(self.mod.single, backend="eager") as cap:
+        # serialized (the MODULE_MATCH on the unregistered module) and keeps the
+        # ones a load rebuilds by reference (the MODULE_MATCH on torch); the
+        # summary reports the drops and the artifact lists the same slots.
+        with self._capture(self.mod.reads_unregistered, backend="eager") as cap:
             cap(self.model, self.x2)
             summary = cap.summary()
         self.assertTrue(summary.complete)
-        self.assertIn("MODULE_MATCH", summary.dropped_guard_types)
-        self.assertTrue(summary.kept_guards)
+        self.assertEqual(
+            summary.dropped_guards, (("MODULE_MATCH", "G['unregistered']"),)
+        )
+        self.assertIn(("MODULE_MATCH", "G['torch']"), summary.kept_guards)
         self.assertEqual(summary.risky_dropped_guards, ())
         with open(self.artifact) as f:
             python_code = f.read()
@@ -5214,6 +5269,131 @@ class TestPrecompileDynamoCapture(TestCase):
             load(self.artifact, other_cache)
         with self.assertRaisesRegex(PrecompileError, "tracer|does not match"):
             load(other_artifact, self.cache)
+
+
+@skipIfTorchDynamo("precompile captures cannot run under dynamo wrapping")
+class TestPrecompileNoCompilation(TestCase):
+    def test_no_compilation_covers_background_threads_and_restores(self):
+        from concurrent.futures import ThreadPoolExecutor
+
+        from torch.compiler._no_compile import is_compilation_forbidden
+
+        env = "TORCH_PRECOMPILE_NO_COMPILATION"
+        previous = os.environ.get(env)
+        compiled = torch.compile(lambda x: x.sin(), backend="eager")
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            first = torch.compiler.precompile.no_compilation()
+            second = torch.compiler.precompile.no_compilation()
+            first.__enter__()
+            second.__enter__()
+            try:
+                first.__exit__(None, None, None)
+                self.assertTrue(is_compilation_forbidden())
+                self.assertEqual(os.environ.get(env), "1")
+                future = pool.submit(compiled, torch.ones(4))
+                with self.assertRaisesRegex(
+                    PrecompileError, "forbids Dynamo graph compilation"
+                ):
+                    future.result()
+            finally:
+                second.__exit__(None, None, None)
+            self.assertFalse(is_compilation_forbidden())
+            self.assertEqual(os.environ.get(env), previous)
+            self.assertEqual(
+                pool.submit(compiled, torch.ones(4)).result(), torch.ones(4).sin()
+            )
+
+    def test_no_compilation_is_not_suppressed(self):
+        compiled = torch.compile(lambda x: x.cos(), backend="eager")
+        with (
+            torch._dynamo.config.patch(suppress_errors=True),
+            torch.compiler.precompile.no_compilation(),
+            self.assertRaisesRegex(PrecompileError, "forbids Dynamo graph compilation"),
+        ):
+            compiled(torch.ones(4))
+
+    def test_backend_no_compilation_error_is_not_suppressed(self):
+        # Another thread can enter no_compilation() after this frame passed
+        # Dynamo's check, so Inductor raises from inside the backend.
+        def backend(gm, example_inputs):
+            raise PrecompileError(
+                "precompile.no_compilation() forbids Inductor graph compilation"
+            )
+
+        compiled = torch.compile(lambda x: x.cos(), backend=backend)
+        with (
+            torch._dynamo.config.patch(suppress_errors=True),
+            self.assertRaisesRegex(
+                torch._dynamo.exc.BackendCompilerFailed,
+                "forbids Inductor graph compilation",
+            ),
+        ):
+            compiled(torch.ones(4))
+
+    def test_no_compilation_rejects_inductor_graph_compilation(self):
+        from torch._inductor.compile_fx import compile_fx
+
+        gm = torch.fx.symbolic_trace(lambda x: x.sin())
+        with (
+            torch.compiler.precompile.no_compilation(),
+            self.assertRaisesRegex(PrecompileError, "Inductor graph compilation"),
+        ):
+            compile_fx(gm, [torch.ones(4)])
+
+    def test_no_compilation_does_not_disable_triton(self):
+        with mock.patch.dict(os.environ):
+            os.environ.pop("TRITON_DISABLE_COMPILATION", None)
+            with torch.compiler.precompile.no_compilation():
+                self.assertNotIn("TRITON_DISABLE_COMPILATION", os.environ)
+
+    @unittest.skipUnless(HAS_TRITON, "requires Triton")
+    def test_no_compilation_rejects_late_triton_cache_miss_before_dispatch(self):
+        from torch._inductor.async_compile import AsyncCompile, CompiledTritonKernels
+
+        with (
+            torch.compiler.precompile.no_compilation(),
+            mock.patch.object(CompiledTritonKernels, "get", return_value=None),
+            mock.patch.object(AsyncCompile, "use_process_pool") as readiness,
+            mock.patch.object(AsyncCompile, "process_pool") as pool,
+            self.assertRaisesRegex(PrecompileError, "Triton kernel cache miss"),
+        ):
+            AsyncCompile().triton("missing_kernel", "missing bundled kernel")
+        readiness.assert_not_called()
+        pool.assert_not_called()
+
+    @unittest.skipUnless(HAS_TRITON, "requires Triton")
+    def test_no_compilation_loads_cached_kernel_without_compile_pool(self):
+        from torch._inductor.async_compile import AsyncCompile, CompiledTritonKernels
+        from torch._inductor.codecache import CodeCacheFuture
+
+        future = mock.Mock(spec=CodeCacheFuture)
+        with (
+            torch.compiler.precompile.no_compilation(),
+            mock.patch.object(CompiledTritonKernels, "get", return_value=future),
+            mock.patch.object(AsyncCompile, "use_process_pool") as readiness,
+            mock.patch.object(AsyncCompile, "process_pool") as pool,
+        ):
+            self.assertIs(
+                AsyncCompile().triton("cached_kernel", "bundled kernel"),
+                future.result.return_value,
+            )
+        future.result.assert_called_once_with()
+        readiness.assert_not_called()
+        pool.assert_not_called()
+
+    @unittest.skipUnless(HAS_TRITON, "requires Triton")
+    def test_no_compilation_rejects_kernel_compile_and_autotune(self):
+        from torch._inductor.runtime.triton_heuristics import CachingAutotuner
+
+        autotuner = mock.Mock(spec=CachingAutotuner)
+        with torch.compiler.precompile.no_compilation():
+            with self.assertRaisesRegex(PrecompileError, "Triton kernel compilation"):
+                CachingAutotuner._precompile_config(autotuner, mock.Mock())
+            with self.assertRaisesRegex(PrecompileError, "Triton kernel benchmarking"):
+                CachingAutotuner.bench(autotuner, mock.Mock())
+            with self.assertRaisesRegex(PrecompileError, "Triton kernel autotuning"):
+                CachingAutotuner.autotune_to_one_config(autotuner)
+        self.assertEqual(autotuner.mock_calls, [])
 
 
 if __name__ == "__main__":
