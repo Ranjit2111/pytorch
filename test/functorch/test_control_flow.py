@@ -34,7 +34,6 @@ from torch._subclasses.functional_tensor import (
     PythonFunctionalizeAPI,
 )
 from torch.fx.experimental.proxy_tensor import make_fx
-from torch.testing._internal.common_cuda import SM70OrLater
 from torch.testing._internal.common_device_type import (
     instantiate_device_type_tests,
     onlyAccelerator,
@@ -57,6 +56,7 @@ from torch.testing._internal.common_utils import (
     TEST_WITH_TORCHDYNAMO,
     TestCase,
 )
+from torch.testing._internal.inductor_utils import HAS_CUDA_AND_TRITON
 
 
 @contextlib.contextmanager
@@ -3244,7 +3244,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
 
     @skipIfTorchDynamo("don't test compile on compile")
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["compile_dynamic_shape"])
     @parametrize("scalar", [False])
     def test_cond_autograd_zeros_unused_branch_complex_compile_fail(
@@ -3534,7 +3534,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
         )
 
     @skipIfTorchDynamo("don't test compile on compile")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -3574,7 +3574,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
                 if autograd:
                     self.check_autograd(result, result_exp, (init, x))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -3634,7 +3634,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             )
             self.assertEqual(grads, expected_grads)
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -3721,7 +3721,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
     # TODO: Does not work because of the usage of vmap within associative_scan
     # The paT206899919 rameterization is commented out for the moment and the test is marked with expected fail
     # Fails with: AssertionError: scan is not an OpOverload
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_scan_associative_scan(self, device):
         combine_mode = "generic"
         compile_mode_scan = "compile"
@@ -3847,7 +3847,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
         if autograd:
             self.check_autograd(result, expected_result, (init, init2, inp))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4146,7 +4146,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
                 reverse=reverse,
             )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4282,7 +4282,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             self.check_autograd(result, expected_result, (*init_flat, *inp_flat))
 
     @skipIfTorchDynamo("don't test compile on compile")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize(
@@ -4370,7 +4370,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
                 )
 
     @skipIfTorchDynamo("not a dynamo test")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("layers", [1, 2, 3])
     @torch._dynamo.config.patch(capture_scalar_outputs=True)
     def test_scan_multiple_layers_gradient(self, device, layers):
@@ -4524,7 +4524,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
                 compiled_loss,
             )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4562,7 +4562,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             res_exp_req_grad_flat = pytree.tree_leaves(result_exp)[1:]
             self.check_autograd(res_req_grad_flat, res_exp_req_grad_flat, (x, h2))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4600,7 +4600,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             res_exp_req_grad_flat = pytree.tree_leaves(result_exp)[1:]
             self.check_autograd(res_req_grad_flat, res_exp_req_grad_flat, (x, h2))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4627,7 +4627,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
         if autograd:
             self.check_autograd(result[0], result_exp[0], (x, h1, h2))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4660,7 +4660,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
         if autograd:
             self.check_autograd(result[1], result_exp[1], (h, x, W_ih, b_ih))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4695,7 +4695,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
         if autograd:
             self.check_autograd(result[1], result_exp[1], (h, x))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4730,7 +4730,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
         if autograd:
             self.check_autograd(result[1], result_exp[1], (h, x))
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager"])
     @parametrize("autograd", [False, True])
@@ -4900,7 +4900,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             scan(fct_input_output_alias, init, inp, dim=0)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_scan_carry_carry_alias(self, device):
         def fct_carry_carry_alias(x, y):
             c = x[0] + y[1]
@@ -4921,7 +4921,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             scan(fct_carry_carry_alias, init, inp, dim=0)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_scan_carry_output_alias(self, device):
         def fct_carry_output_alias(x, y):
             c = x[0] + y[1]
@@ -4942,7 +4942,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             scan(fct_carry_output_alias, init, inp, dim=0)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("alias_kind", ["disjoint", "overlap", "same_view"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("autograd", [False, True])
@@ -4966,7 +4966,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             self.check_autograd(result, result_exp, (init, xs, kv))
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("alias_site", ["init", "nested"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("autograd", [False, True])
@@ -5033,7 +5033,7 @@ class TestControlFlowDevice(_TestControlFlowBase):
             scan(fct_aliased_mutation, init, xs, dim=0)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile"])
     def test_scan_unaliased_additional_input_mutation(self, device, compile_mode):
         scan_fct = compile_mode_helper(scan, compile_mode)
@@ -5476,7 +5476,7 @@ class AssociativeScanTestsDevice(TestCase):
         kwargs_fake["compile_mode"] = "fake"
         return kwargs_fake
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -5514,7 +5514,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (x,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -5583,7 +5583,7 @@ class AssociativeScanTestsDevice(TestCase):
 
         self.assertEqual(result, results_torch)
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -5638,7 +5638,7 @@ class AssociativeScanTestsDevice(TestCase):
                 self.assertEqual(results, results_torch)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @unittest.expectedFailure
     def test_associative_scan_dim_shape_failure(
         self, device, compile_mode, combine_mode
@@ -5663,7 +5663,7 @@ class AssociativeScanTestsDevice(TestCase):
             )
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_associative_scan_pointwise_mixed_device_lowering_error(self, device):
         def combine_fn(x, y):
             return (x[0] + y[0], x[1] + y[1])
@@ -5681,7 +5681,7 @@ class AssociativeScanTestsDevice(TestCase):
         with self.assertRaisesRegex(InductorError, "is not supported on cpu"):
             torch.compile(M(), fullgraph=True)(a, b)
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("reverse", [False, True])
@@ -5722,7 +5722,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else inp,
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
     @parametrize("autograd", [False, True])
@@ -5749,7 +5749,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (x,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
     @parametrize("autograd", [False, True])
@@ -5779,7 +5779,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (x,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("reverse", [False, True])
@@ -5821,7 +5821,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (x, y, z),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -5867,7 +5867,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -5914,7 +5914,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse_first", [False, True])
@@ -5973,7 +5973,7 @@ class AssociativeScanTestsDevice(TestCase):
     # TODO: NestedFn does not accept the kwargs passed here (dim, reverse, ...),
     # so this fails at model construction. Fix NestedFn's signature to re-enable.
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @unittest.expectedFailure
     def test_associative_scan_nested(self, device):
         combine_mode = "pointwise"
@@ -6019,7 +6019,7 @@ class AssociativeScanTestsDevice(TestCase):
             inputs=inp,
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("loop_type", ["for"])
     @parametrize("reverse", [False, True])
@@ -6070,7 +6070,7 @@ class AssociativeScanTestsDevice(TestCase):
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @unittest.expectedFailure
     def test_associative_scan_loop_in_combine_fn_failure(self, device):
         compile_mode = "none"
@@ -6103,7 +6103,7 @@ class AssociativeScanTestsDevice(TestCase):
             inputs=inp,
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
     @parametrize("autograd", [False, True])
@@ -6143,7 +6143,7 @@ class AssociativeScanTestsDevice(TestCase):
     # TODO: Does not work because of the usage of vmap within associative_scan
     # TODO: Re-enable additional parameters again once this issues has been resolved
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @unittest.expectedFailure
     def test_associative_scan_map_in_combine_fn(self, device):
         compile_mode = "none"
@@ -6173,7 +6173,7 @@ class AssociativeScanTestsDevice(TestCase):
             inputs=inp,
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
     @parametrize("autograd", [False, True])
@@ -6205,7 +6205,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("reverse", [False, True])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("autograd", [False, True])
@@ -6235,7 +6235,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (x,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("reverse", [False, True])
@@ -6280,7 +6280,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else elements,
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
     def test_associative_scan_different_input_size(self, device, compile_mode, reverse):
@@ -6317,7 +6317,7 @@ class AssociativeScanTestsDevice(TestCase):
         )
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_associative_scan_different_input_size_wrong_dim(self, device):
         batch = 5
         hidden_dim = 3
@@ -6342,7 +6342,7 @@ class AssociativeScanTestsDevice(TestCase):
                 combine_mode="pointwise",
             )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("reverse", [False, True])
@@ -6393,7 +6393,7 @@ class AssociativeScanTestsDevice(TestCase):
                 autograd_param=None if not autograd else (inp, *param),
             )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("reverse", [False, True])
@@ -6468,7 +6468,7 @@ class AssociativeScanTestsDevice(TestCase):
                 autograd_param=None if not autograd else (inp, *param),
             )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("reverse", [False, True])
@@ -6507,7 +6507,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
     @parametrize("autograd", [False, True])
@@ -6545,7 +6545,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("reverse", [False, True])
@@ -6582,7 +6582,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (inp,),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
     @parametrize("combine_mode", ["pointwise", "generic"])
@@ -6636,7 +6636,7 @@ class AssociativeScanTestsDevice(TestCase):
             autograd_param=None if not autograd else (*pytree.tree_leaves(inp),),
         )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -6694,7 +6694,7 @@ class AssociativeScanTestsDevice(TestCase):
                 autograd_param=inp,
             )
 
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("combine_mode", ["pointwise", "generic"])
     @parametrize("compile_mode", ["none", "eager", "compile", "compile_dynamic_shape"])
     @parametrize("reverse", [False, True])
@@ -6742,7 +6742,7 @@ class AssociativeScanTestsDevice(TestCase):
         )
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_associative_scan_combine_fn_wrong_meta_in_combine_fn(self, device):
         B, N, C, H, W = 3, 3, 2, 3, 3
         x = torch.randn(B, N, C, H, W, device=device)
@@ -6764,7 +6764,7 @@ class AssociativeScanTestsDevice(TestCase):
                 associative_scan(fct, x, 0)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_associative_scan_non_pointwise(self, device):
         x = torch.randn(3, 10, 2, device=device)
         with self.assertRaisesRegex(
@@ -6780,7 +6780,7 @@ class AssociativeScanTestsDevice(TestCase):
             )
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_associative_scan_pointwise_multiple_additional_inputs_autograd(
         self, device
     ):
@@ -6804,7 +6804,7 @@ class AssociativeScanTestsDevice(TestCase):
         self.assertEqual(grads, grads_ref)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_associative_scan_pointwise_additional_input_requires_grad_raises(
         self, device
     ):
@@ -6853,7 +6853,7 @@ class AssociativeScanTestsDevice(TestCase):
             associative_scan(fct_input_output_alias, inp, 0)
 
     @onlyAccelerator
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_associative_scan_output_output_alias(self, device):
         def fct_output_output_alias(x, y):
             c = x[0] + y[1]
@@ -12779,7 +12779,7 @@ class TestAutoFunctionalizeControlFlowDevice(TestCase):
         return backend.fw_graphs[0]
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_cond_auto_functionalize_input_mutation(self, device, dynamic):
         class M(torch.nn.Module):
@@ -12833,7 +12833,7 @@ class <lambda>(torch.nn.Module):
             )
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_cond_auto_functionalize_buffer_mutation(self, device, dynamic):
         class M(torch.nn.Module):
@@ -12898,7 +12898,7 @@ class <lambda>(torch.nn.Module):
             )
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @skipXPUIf(True, "https://github.com/intel/torch-xpu-ops/issues/5193")
     @parametrize("dynamic", [True, False])
     def test_cond_auto_functionalize_union_input_mutation(self, device, dynamic):
@@ -12971,7 +12971,7 @@ class <lambda>(torch.nn.Module):
             )
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_while_loop_auto_functionalize_buffer_mutation(self, device, dynamic):
         class M(torch.nn.Module):
@@ -13036,7 +13036,7 @@ class <lambda>(torch.nn.Module):
             )
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_while_loop_auto_functionalize_multiple_buffer_mutation(
         self, device, dynamic
@@ -13095,7 +13095,7 @@ class <lambda>(torch.nn.Module):
             )
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_while_loop_auto_functionalize_buffer_in_cond(self, device, dynamic):
         class M(torch.nn.Module):
@@ -13145,7 +13145,7 @@ class <lambda>(torch.nn.Module):
             )
 
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_while_loop_auto_functionalize_captured_tensor_mutation(
         self, device, dynamic
@@ -13204,7 +13204,7 @@ class <lambda>(torch.nn.Module):
 
     # https://github.com/pytorch/pytorch/issues/195327
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     @parametrize("mutate_in", ["cond", "body", "both"])
     def test_while_loop_auto_functionalize_pre_mutated_tensor_mutation(
@@ -13239,7 +13239,7 @@ class <lambda>(torch.nn.Module):
 
     # https://github.com/pytorch/pytorch/issues/195327
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_while_loop_auto_functionalize_pre_mutated_tensor_in_cond_zero_iter(
         self, device, dynamic
@@ -13272,7 +13272,7 @@ class <lambda>(torch.nn.Module):
     # functionalization (auto-functionalization does not kick in because
     # no captured tensor is mutated).
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     def test_while_loop_cond_mutates_carry_raises(self, device):
         def f(x):
             def cond_fn(i, acc):
@@ -13303,7 +13303,7 @@ class <lambda>(torch.nn.Module):
     # lowering instead of being rejected up front. The carry's final
     # value must come from body_fn's output, not the pre-loop buffer.
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_while_loop_cond_mutates_carry_and_pre_mutated_tensor(
         self, device, dynamic
@@ -13335,7 +13335,7 @@ class <lambda>(torch.nn.Module):
 
     # https://github.com/pytorch/pytorch/issues/195327
     @skipIfTorchDynamo("Graph is not captured by backend if test with dynamo")
-    @skipCUDAIf(not SM70OrLater, "triton")
+    @skipCUDAIf(not HAS_CUDA_AND_TRITON, "triton")
     @parametrize("dynamic", [True, False])
     def test_while_loop_pre_mutated_tensor_in_cond_repeated_calls(
         self, device, dynamic

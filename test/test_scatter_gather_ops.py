@@ -1106,7 +1106,7 @@ class TestScatterAddOverrideCorrectness(TestCase):
         # every contiguous shape and the vec cache would never move.
         from torch._native.ops.scatter_add import tma_kernel, vec_scatter_kernel
         if path == "tma":
-            if not (SM90OrLater or torch.version.hip):
+            if not SM90OrLater:
                 self.skipTest("TMA path requires sm_90+")
             compile_fn = tma_kernel._compile_tma_scatter
             run = tma_kernel.tma_scatter_add_into
@@ -1239,7 +1239,7 @@ class TestScatterAddOverrideCorrectness(TestCase):
         from torch._native.ops.scatter_add import cutedsl_impl
 
         # See test_alignment_cond_matrix.
-        if case.dtype is torch.bfloat16 and not (SM90OrLater or torch.version.hip):
+        if case.dtype is torch.bfloat16 and not SM90OrLater:
             self.skipTest("bf16 alignment cond requires sm_90+")
         torch.manual_seed(0)
         self_t, src = _build_alignment_case(case)
@@ -1295,7 +1295,7 @@ class TestScatterAddOverrideCorrectness(TestCase):
         subtest((torch.float32, 36), name="fp32_N36_cb144"),
         subtest((torch.bfloat16, 72), name="bf16_N72_cb144"),
     ])
-    @unittest.skipUnless(SM90OrLater or torch.version.hip, "TMA path requires sm_90+")
+    @unittest.skipUnless(SM90OrLater, "TMA path requires sm_90+")
     def test_smem_stage_alignment_multi_iter(self, dtype, N):
         # Regression for TMA stage-1 smem misalignment: stage 1 of the
         # 2-stage pipeline buffer lands at offset chunk_bytes, so any
