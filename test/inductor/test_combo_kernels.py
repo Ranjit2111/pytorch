@@ -94,7 +94,7 @@ def _optimization_hint(expr, fallback=None):
     return expr
 
 
-def _make_node_info(x_hint, rnumel=1, is_reduction=False):
+def _make_node_info(x_hint, rnumel=1, is_reduction=False, persistent=False):
     return NodeInfo(
         node_schedule=[],
         tiling={"x": x_hint, "y": rnumel},
@@ -102,7 +102,7 @@ def _make_node_info(x_hint, rnumel=1, is_reduction=False):
         numel=x_hint,
         rnumel=rnumel,
         features=_Features(is_reduction),
-        is_persistent_reduction=False,
+        is_persistent_reduction=persistent,
     )
 
 
@@ -501,6 +501,39 @@ class ComboKernelPartitionLoggingTests(TestCase):
             if "ComboKernels: 1 large pointwise nodes are separated" in msg
         ]
         self.assertEqual(len(large_pointwise_logs), 2)
+
+
+class ComboKernelPartitionTests(TestCase):
+    def _partition(self, node_info_map):
+        graph = SimpleNamespace(
+            sizevars=SimpleNamespace(optimization_hint=_optimization_hint)
+        )
+        with V.set_graph_handler(graph):
+            return _default_custom_combo_kernel_horizontal_partition(
+                list(node_info_map), None, node_info_map
+            )
+
+    def test_very_large_short_reduction_runs_standalone(self):
+        small = _PartitionLoggingNode(rnumel=768)
+        large = _PartitionLoggingNode(rnumel=192)
+        other_small = _PartitionLoggingNode(rnumel=768)
+        node_info_map = {
+            small: _make_node_info(
+                3072, rnumel=768, is_reduction=True, persistent=True
+            ),
+            large: _make_node_info(
+                int(LARGE_NUMELS) // 192 + 1,
+                rnumel=192,
+                is_reduction=True,
+                persistent=True,
+            ),
+            other_small: _make_node_info(
+                3072, rnumel=768, is_reduction=True, persistent=True
+            ),
+        }
+
+        partitions = self._partition(node_info_map)
+        self.assertEqual(partitions, [[large], [small, other_small]])
 
 
 def _compile_persistent_and_looped_reductions():
