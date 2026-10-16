@@ -7480,6 +7480,38 @@ class TestFlexGemmEpilogueHOP(FlexGemmTestCase):
     @skipIfNoCuteDSL
     @unittest.skipIf(not TEST_CUDA, "CUDA required")
     @unittest.skipIf(not SM100OrLater, "SM100+ required")
+    @parametrize("layout", ("contiguous", "lane_view"))
+    def test_mm_unaligned_n_bf16_tile_capture_matches_reference(self, layout):
+        # N=12 is legal for a K-major B and fp32 output, but a bf16 [M, 12] tile
+        # has a 24-byte row stride, so QuACK's TMA load needs a padded copy.
+        m, k, n = 128, 64, 12
+        a = torch.randn(m, k, device="cuda", dtype=torch.bfloat16)
+        b = torch.randn(n, k, device="cuda", dtype=torch.bfloat16).t()
+        h = torch.randn(m, 2 * n, device="cuda", dtype=torch.bfloat16)
+        cap = h.view(m, n, 2)[..., 0]
+        if layout == "contiguous":
+            cap = h[:, :n].contiguous()
+
+        def fn(a, b):
+            return flex_gemm(
+                torch.mm,
+                (a, b),
+                lambda acc: acc.float() * cap,
+                kernel_options={"backend": "QUACK"},
+            )
+
+        actual, (code,) = run_and_get_code(
+            torch.compile(fn, backend="inductor", fullgraph=True), a, b
+        )
+
+        self.assertIn("flex_gemm_epilogue(", code)
+        self.assertMatchesLowPrecisionEager(
+            actual, (a @ b).float() * cap, (a.double() @ b.double()) * cap.double(), k
+        )
+
+    @skipIfNoCuteDSL
+    @unittest.skipIf(not TEST_CUDA, "CUDA required")
+    @unittest.skipIf(not SM100OrLater, "SM100+ required")
     def test_mm_1d_capture_unsqueeze_inside_matches_hoisted(self):
         import re
 
@@ -9000,6 +9032,37 @@ class TestFlexGemmGroupedMmDevice(FlexGemmTestCase):
 
         self.assertGroupedMmQuackCode(code)
         self.assertGroupedMmMatches(actual, x, w_t, offs, F.silu)
+
+    @parametrize("layout", ("chunked", "interleaved"))
+    def test_grouped_mm_strided_tile_captures_match_reference(self, device, layout):
+        # Both lanes of a saved [M, 2N] tensor: chunked views have a unit inner
+        # stride and load in place; interleaved views have no unit-stride dim, so
+        # QuACK's TMA tile load cannot read them and lowering must copy them.
+        x, w_t, offs = self.makeGroupedMm((201, 0, 129, 182), device)
+        h = torch.randn(x.shape[0], 2 * self.N, device=device, dtype=torch.bfloat16)
+        if layout == "chunked":
+            gate, up = h.chunk(2, dim=-1)
+        else:
+            gate, up = h.view(x.shape[0], self.N, 2).unbind(-1)
+
+        def epilogue_fn(acc):
+            return (acc * gate + up).to(acc.dtype)
+
+        def fn(x, w_t, offs):
+            return flex_gemm(
+                F.grouped_mm,
+                (x, w_t),
+                epilogue_fn,
+                gemm_kwargs={"offs": offs},
+                kernel_options={"backend": "QUACK"},
+            )
+
+        actual, (code,) = run_and_get_code(
+            torch.compile(fn, backend="inductor", fullgraph=True), x, w_t, offs
+        )
+
+        self.assertGroupedMmQuackCode(code)
+        self.assertGroupedMmMatches(actual, x, w_t, offs, epilogue_fn)
 
     @parametrize("capture_dtype", (torch.float32, torch.bfloat16, torch.float16))
     def test_grouped_mm_captures_and_aux_match_reference(self, device, capture_dtype):
