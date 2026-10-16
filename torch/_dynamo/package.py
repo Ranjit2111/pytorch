@@ -1508,6 +1508,7 @@ class CompilePackage:
         """
         from torch._C._dynamo.eval_frame import (
             _load_precompile_entry,
+            _load_precompile_skip,
             set_code_exec_strategy,
         )
 
@@ -1598,12 +1599,15 @@ class CompilePackage:
                         )
 
                 if entry.skip_recursive:
+                    # Not reported to the guard collective: like it, this
+                    # assumes every rank installed the same artifact, so every
+                    # rank skips the frame and its callees.
                     skip_all = FrameExecStrategy(FrameAction.SKIP, FrameAction.SKIP)
                     set_code_exec_strategy(target_code, skip_all)
                 elif len(entry.guarded_codes) == 0:
                     # Dynamo generates empty graph for trivial functions, should just skip them
                     # in these cases.
-                    torch._dynamo.eval_frame.skip_code(target_code)
+                    _load_precompile_skip(target_code)
 
                 for guarded_code in entry.guarded_codes:
                     with dynamo_timed("precompile_load_guards"):
